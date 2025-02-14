@@ -1,0 +1,206 @@
+---
+title: "SCS A1S2 markdown"
+author: "Cammy Love"
+date: "2025-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+# data for the project
+data <- read.csv("~/Desktop/SCS A1S2/SCS A1S2/CpepIns.csv")
+```
+
+
+
+
+
+```{r}
+# trying to clean the data
+
+data0 <- data.frame(
+  year = data$Year,
+  c.peptide = as.numeric(data$C.Peptide),
+  insulin = as.numeric(data$Insulin)
+)
+# Above makes the data numeric, but what happens is that the mentioned
+# problem data points with characters in their entries are now recorded as N/A
+
+# this data frame has no N/A values in it, they were removed. 
+data_rm <- na.omit(data0)
+
+
+# ID duplicate data rows and remove all apart from one of them
+duplicate_data <- data_rm[duplicated(data_rm) | duplicated(data_rm, fromLast = TRUE), ]
+
+data_nodups <- data_rm[!duplicated(data_rm), ]
+
+
+```
+
+```{r}
+# Obtaining some useful summary statistics about the data 
+
+mean_insulin <- mean(data_nodups$insulin)
+sd_insulin <- sd(data_nodups$insulin)
+mean_cpep <- mean(data_nodups$c.peptide)
+sd_cpep <- sd(data_nodups$c.peptide)
+
+# overall summary stats of the table given here
+
+summary(data_nodups)
+
+
+```
+
+
+
+```{r}
+# histograms of data distributions. 
+hyp_model <- lm(c.peptide ~ insulin, data = data_nodups)
+summary(hyp_model)
+
+int <- summary(hyp_model)$coef[1]
+slope <- summary(hyp_model)$coef[2]
+
+
+ggplot(data = data_nodups, aes(x = log(c.peptide))) + 
+  geom_histogram()
+
+ggplot(data = data_nodups, aes(x = log(insulin))) + 
+  geom_histogram()
+
+
+```
+
+```{r}
+# and plotting the datapoints themselves:
+
+ggplot(data = data_rm, aes(x = insulin, y = c.peptide)) + 
+  geom_point() +
+  geom_abline(intercept = int, slope = slope, colour = 'red')  
+  
+
+ggplot(data = data_rm, aes(x = log(insulin), y = log(c.peptide))) + 
+  geom_point()
+```
+
+
+
+
+
+
+
+
+```{r}
+model0 <- lm(log(c.peptide) ~ log(insulin) , data = data_nodups)
+summary(model0)
+
+log_insulin_seq <- seq(
+  min(log(data_nodups$insulin)),
+  max(log(data_nodups$insulin)),
+  length.out = 100
+)
+insulin_grid <- exp(log_insulin_seq)
+newdata <- data.frame(insulin = insulin_grid)
+
+# Use predict() to get fitted values and the prediction intervals
+predictions_pred <- predict(model0, newdata = newdata, interval = "prediction", level = 0.99)
+newdata_pred <- cbind(newdata, predictions_pred, log_insulin = log(newdata$insulin))
+
+# Child F: 4657 insulin, 169 c-peptide
+# Child L: 1099 insulin, 264 c-peptide
+
+child.insulin.levels <- c(4657, 1099)
+child.cpeptide.levels <- c(169, 264)
+
+child_data <- data.frame(insulin = child.insulin.levels, 
+                         c.peptide = child.cpeptide.levels)
+child_data$child <- c("Child F", "Child L")
+
+ggplot(data_nodups, aes(x = log(insulin), y = log(c.peptide))) + 
+  geom_point() + 
+  geom_line(data = newdata_pred, aes(x = log_insulin, y = fit), color = "red") + 
+  geom_point(data = child_data, 
+             aes(x = log(insulin), y = log(c.peptide), color = factor(child)), 
+             shape = 4, size = 3) +  # Use `shape = 4` for "X" marks
+  geom_ribbon(
+    data = newdata_pred,
+    aes(x = log_insulin, ymin = lwr, ymax = upr),
+    inherit.aes = FALSE, alpha = 0.2) + 
+  labs(x = "log(insulin)", y = "log(c.peptide)",
+       title = "Regression with 99% Prediction Interval",
+       color = "Child") +  # Legend title
+  scale_color_manual(values = c("blue", "turquoise4"), 
+                     labels = c("Child F", "Child L")) 
+
+```
+
+```{r}
+# diagnostics plots
+par(mfrow = c(2, 2))  
+plot(model0)
+
+library(lmtest)
+
+# perform breusch-pagan test for homoskedasticity assumption (low pval means heteroscedatic residuals)
+bptest(model0)
+```
+
+
+
+
+
+
+
+
+
+```{r}
+
+
+model0 <- lm(log(c.peptide) ~ log(insulin) + I(log(insulin)^2), data = data_nodups)
+
+sigma_hat <- summary(model0)$sigma
+
+ChildF <- data.frame(insulin = 4657, cpeptide = 169)
+ChildF$logInsulin  <- log(ChildF$insulin)
+ChildF$logCpeptide <- log(ChildF$cpeptide)
+
+# Prediction for child F
+muF <- predict(model0, newdata = ChildF) 
+
+pdf_F <- dnorm(
+  x     = ChildF$logCpeptide,    
+  mean  = muF,                    
+  sd    = sigma_hat              
+)
+
+pval_lower <- pnorm(ChildF$logCpeptide, mean=muF, sd=sigma_hat)
+
+ChildL <- data.frame(insulin = 1099, cpeptide = 264)
+ChildL$logInsulin <- log(ChildL$insulin)
+ChildL$logCpeptide <- log(ChildL$cpeptide)
+
+muL <- predict(model0, newdata = ChildL)
+pdf_L <- dnorm(
+  x = ChildL$logCpeptide,
+  mean = muL,
+  sd = sigma_hat)
+
+pval_lowerL <- pnorm(ChildL$logCpeptide, mean = muL, sd = sigma_hat)
+
+print("Child F p-value:")
+print(pval_lower)
+print("Child L p-value:")
+print(pval_lowerL)
+
+```
+
+
+
+
+
+
+
